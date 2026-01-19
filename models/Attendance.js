@@ -1,18 +1,18 @@
 const mongoose = require('mongoose');
 
 const AttendanceSchema = new mongoose.Schema({
-  classId: { type: mongoose.Schema.Types.ObjectId, ref: 'Classroom', required: true },
-  date: { type: Date, required: true },
-  
-  periods: [{
-    periodNum: Number,      
-    subjectId: String,       
-    subjectName: String,     
-    
+    classId: { type: mongoose.Schema.Types.ObjectId, ref: 'Classroom', required: true },
+    date: { type: Date, required: true },
 
-    absentRollNumbers: [{ type: Number }] 
-  }]
-});
+    periods: [{
+        periodNum: Number,
+        subjectId: String,
+        subjectName: String,
+
+
+        absentRollNumbers: [{ type: Number }]
+    }]
+}, { timestamps: true }); // Add timestamps for createdAt and updatedAt
 
 AttendanceSchema.index({ classId: 1, date: 1 }, { unique: true });
 

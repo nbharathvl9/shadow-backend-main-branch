@@ -127,4 +127,26 @@ router.get('/:id', async (req, res) => {
     }
 });
 
+// @route   PUT /api/class/update-settings
+// @desc    Update class settings
+router.put('/update-settings', async (req, res) => {
+    try {
+        const { classId, settings } = req.body;
+
+        const classroom = await Classroom.findByIdAndUpdate(
+            classId,
+            { settings },
+            { new: true }
+        );
+
+        if (!classroom) {
+            return res.status(404).json({ error: 'Class not found' });
+        }
+
+        res.json({ message: 'Settings updated successfully', classroom });
+    } catch (err) {
+        res.status(500).json({ error: 'Server Error' });
+    }
+});
+
 module.exports = router;
