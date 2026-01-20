@@ -1,5 +1,6 @@
 const express = require('express');
 const router = express.Router();
+const mongoose = require('mongoose'); // Required for ObjectId casting
 const Classroom = require('../models/Classroom');
 const Attendance = require('../models/Attendance');
 
@@ -9,48 +10,57 @@ router.get('/report/:classId/:rollNumber', async (req, res) => {
         const { classId, rollNumber } = req.params;
         const rollNo = parseInt(rollNumber);
 
+        if (!mongoose.Types.ObjectId.isValid(classId)) {
+            return res.status(400).json({ error: 'Invalid Class ID' });
+        }
+
         const classroom = await Classroom.findById(classId);
         if (!classroom) return res.status(404).json({ error: 'Class not found' });
 
-        const allRecords = await Attendance.find({ classId });
-
-        let report = {};
-
-        // Initialize report structure
-        classroom.subjects.forEach(sub => {
-            report[sub._id] = {
-                subjectName: sub.name,
-                totalClasses: 0,
-                attendedClasses: 0,
-                status: "Neutral"
-            };
-        });
-
-        // Calculate attendance
-        allRecords.forEach(day => {
-            day.periods.forEach(p => {
-                const subId = p.subjectId;
-                if (report[subId]) {
-                    report[subId].totalClasses += 1;
-                    if (!p.absentRollNumbers.includes(rollNo)) {
-                        report[subId].attendedClasses += 1;
+        // 🚀 OPTIMIZATION: Use Aggregation instead of fetching all records
+        const stats = await Attendance.aggregate([
+            { 
+                $match: { classId: new mongoose.Types.ObjectId(classId) } 
+            },
+            { 
+                $unwind: "$periods" 
+            },
+            {
+                $group: {
+                    _id: "$periods.subjectId", // Group by Subject ID
+                    totalClasses: { $sum: 1 },
+                    attendedClasses: {
+                        $sum: {
+                            // If rollNo is in absent list, add 0, else add 1
+                            $cond: [{ $in: [rollNo, "$periods.absentRollNumbers"] }, 0, 1]
+                        }
                     }
                 }
-            });
+            }
+        ]);
+
+        // Convert array to Map for O(1) lookup
+        const statsMap = {};
+        stats.forEach(stat => {
+            statsMap[stat._id] = stat;
         });
 
-        // Finalize calculations
-        const finalReport = Object.values(report).map(subject => {
-            const { totalClasses, attendedClasses } = subject;
+        // Finalize calculations using Classroom metadata
+        const finalReport = classroom.subjects.map(subject => {
+            // Get stats from map or default to 0
+            const stat = statsMap[subject._id.toString()] || { totalClasses: 0, attendedClasses: 0 };
+            const { totalClasses, attendedClasses } = stat;
+
             const percentage = totalClasses === 0 ? 100 : ((attendedClasses / totalClasses) * 100).toFixed(1);
+            const floatPercentage = parseFloat(percentage);
 
             let bunkMsg = "";
             const minPercentage = classroom.settings?.minAttendancePercentage || 75;
 
-            if (percentage >= minPercentage + 5) { // Safe buffer
+            if (floatPercentage >= minPercentage + 5) { // Safe buffer
                 const canBunk = Math.floor((attendedClasses / (minPercentage/100)) - totalClasses);
                 bunkMsg = `Safe! You can bunk ${Math.max(0, canBunk)} more classes.`;
-            } else if (percentage < minPercentage) {
+            } else if (floatPercentage < minPercentage) {
                 const mustAttend = Math.ceil(((minPercentage/100) * totalClasses - attendedClasses) / (1 - (minPercentage/100)));
                 bunkMsg = `Danger! Attend next ${Math.max(1, mustAttend)} classes to recover.`;
             } else {
@@ -58,8 +68,8 @@ router.get('/report/:classId/:rollNumber', async (req, res) => {
             }
 
             return {
-                ...subject,
-                percentage: parseFloat(percentage),
+                ...subject.toObject(), // Ensure we keep original subject properties
+                percentage: floatPercentage,
                 attended: attendedClasses,
                 total: totalClasses,
                 message: bunkMsg
@@ -73,7 +83,7 @@ router.get('/report/:classId/:rollNumber', async (req, res) => {
         });
 
     } catch (err) {
-        console.error(err);
+        console.error("Report Error:", err);
         res.status(500).json({ error: 'Server Error' });
     }
 });
@@ -87,12 +97,15 @@ router.post('/simulate-bunk', async (req, res) => {
         const classroom = await Classroom.findById(classId);
         if (!classroom) return res.status(404).json({ error: 'Class not found' });
 
+        // NOTE: For consistency, you should also apply aggregation here if this endpoint gets slow,
+        // but since we need granular control for simulation, we'll keep logic similar but ensure we optimize queries later if needed.
+        // For now, the bottleneck is primarily on the main dashboard load.
+        
         const allRecords = await Attendance.find({ classId });
 
-        // 1. Calculate Current Status
+        // 1. Calculate Current Status (Standard Loop - could be replaced by aggregation for speed)
         let currentStats = {};
         classroom.subjects.forEach(sub => {
-            // Using ID as key for easier lookup
             currentStats[sub._id.toString()] = {
                 subjectName: sub.name,
                 totalClasses: 0,
@@ -116,7 +129,6 @@ router.post('/simulate-bunk', async (req, res) => {
         const impacts = [];
         const days = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 
-        // Iterate over stats using keys to access IDs directly
         for (const [subjectId, stat] of Object.entries(currentStats)) {
             
             let classesOnSelectedDates = 0;
@@ -126,7 +138,6 @@ router.post('/simulate-bunk', async (req, res) => {
                 const dayOfWeek = days[d.getDay()];
                 const daySchedule = classroom.timetable?.[dayOfWeek] || [];
                 
-                // CRITICAL FIX: Convert both to String for comparison
                 const hasClass = daySchedule.some(slot => String(slot.subjectId) === String(subjectId));
                 
                 if (hasClass) classesOnSelectedDates++;
@@ -137,7 +148,7 @@ router.post('/simulate-bunk', async (req, res) => {
                 : (stat.attendedClasses / stat.totalClasses) * 100;
 
             const afterTotal = stat.totalClasses + classesOnSelectedDates;
-            const afterAttended = stat.attendedClasses; // Bunking, so attended count doesn't increase
+            const afterAttended = stat.attendedClasses; 
             
             const afterPercentage = afterTotal === 0
                 ? 100
@@ -165,7 +176,6 @@ router.get('/day-attendance/:classId/:rollNumber/:date', async (req, res) => {
         const { classId, rollNumber, date } = req.params;
         const rollNo = parseInt(rollNumber);
 
-        // Normalize date to start of day for accurate query
         const queryDate = new Date(date);
         queryDate.setHours(0, 0, 0, 0);
 
@@ -186,6 +196,42 @@ router.get('/day-attendance/:classId/:rollNumber/:date', async (req, res) => {
 
         res.json({ periods: periodsWithStatus });
     } catch (err) {
+        res.status(500).json({ error: 'Server Error' });
+    }
+});
+
+// Get detailed history for a specific subject
+router.get('/history/:classId/:rollNumber/:subjectId', async (req, res) => {
+    try {
+        const { classId, rollNumber, subjectId } = req.params;
+        const rollNo = parseInt(rollNumber);
+
+        // Find all attendance records containing this subject
+        // Sort by date descending (newest first)
+        const records = await Attendance.find({
+            classId: classId,
+            'periods.subjectId': subjectId
+        }).select('date periods').sort({ date: -1 });
+
+        const history = [];
+
+        records.forEach(record => {
+            // A subject might occur multiple times in one day (e.g. 2 periods)
+            const relevantPeriods = record.periods.filter(p => p.subjectId === subjectId);
+
+            relevantPeriods.forEach(p => {
+                history.push({
+                    date: record.date, // Frontend will format this
+                    status: p.absentRollNumbers.includes(rollNo) ? 'Absent' : 'Present',
+                    periodNum: p.periodNum
+                });
+            });
+        });
+
+        res.json({ history });
+
+    } catch (err) {
+        console.error("History Error:", err);
         res.status(500).json({ error: 'Server Error' });
     }
 });
