@@ -1,8 +1,9 @@
 const express = require('express');
 const router = express.Router();
 const jwt = require('jsonwebtoken');
+const bcrypt = require('bcryptjs'); // Import bcrypt for security
 const Classroom = require('../models/Classroom');
-const auth = require('../middleware/auth'); // Import the new middleware
+const auth = require('../middleware/auth'); 
 
 // @route   POST /api/class/create
 // @desc    Create a new Classroom (Protected)
@@ -14,9 +15,13 @@ router.post('/create', async (req, res) => {
             return res.status(400).json({ error: 'Please provide all required fields' });
         }
 
+        // 1. Hash the PIN before saving
+        const salt = await bcrypt.genSalt(10);
+        const hashedPin = await bcrypt.hash(adminPin, salt);
+
         const newClass = new Classroom({
             className,
-            adminPin,
+            adminPin: hashedPin, // Store the hash, not the plain text
             totalStudents,
             subjects,
             timetable
@@ -34,11 +39,15 @@ router.post('/create', async (req, res) => {
         res.status(201).json({
             message: 'Class Created!',
             classId: savedClass._id,
-            token, // Return token so they are logged in
+            token, 
             data: savedClass
         });
 
     } catch (err) {
+        // 2. Handle Duplicate Class Name Error
+        if (err.code === 11000) {
+            return res.status(400).json({ error: 'Class Name already exists! Please choose another.' });
+        }
         console.error(err);
         res.status(500).json({ error: 'Server Error' });
     }
@@ -58,7 +67,10 @@ router.post('/admin-login', async (req, res) => {
             return res.status(404).json({ error: 'Class not found' });
         }
 
-        if (classroom.adminPin !== adminPin) {
+        // 3. Compare the provided PIN with the stored Hash
+        const isMatch = await bcrypt.compare(adminPin, classroom.adminPin);
+
+        if (!isMatch) {
             return res.status(401).json({ error: 'Invalid PIN' });
         }
 
@@ -72,7 +84,7 @@ router.post('/admin-login', async (req, res) => {
         res.json({ 
             message: 'Login successful', 
             classId: classroom._id,
-            token // Send token to frontend
+            token 
         });
     } catch (err) {
         res.status(500).json({ error: 'Server Error' });
@@ -117,7 +129,6 @@ router.put('/update-timetable', auth, async (req, res) => {
             return res.status(403).json({ error: 'Unauthorized action' });
         }
 
-        // Basic Validation: Ensure subjectIds exist (Optional improvement)
         const classroom = await Classroom.findById(classId);
         if (!classroom) return res.status(404).json({ error: 'Class not found' });
 

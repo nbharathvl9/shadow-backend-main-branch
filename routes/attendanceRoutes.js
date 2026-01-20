@@ -1,17 +1,16 @@
 const express = require('express');
 const router = express.Router();
 const Attendance = require('../models/Attendance');
-const auth = require('../middleware/auth'); // Protect marking
+const auth = require('../middleware/auth'); 
 
-// Helper to strip time component
+// FIX: Force UTC Midnight to avoid timezone shifts
 const normalizeDate = (dateString) => {
-    const d = new Date(dateString);
-    d.setHours(0, 0, 0, 0);
-    return d;
+    // Ensure we only take the YYYY-MM-DD part and force UTC
+    const datePart = new Date(dateString).toISOString().split('T')[0];
+    return new Date(`${datePart}T00:00:00.000Z`);
 };
 
 // @route   POST /api/attendance/mark
-// @desc    Mark/Update Attendance (Protected)
 router.post('/mark', auth, async (req, res) => {
     try {
         const { classId, date, periods } = req.body;
@@ -20,7 +19,6 @@ router.post('/mark', auth, async (req, res) => {
             return res.status(400).json({ error: 'Missing required fields' });
         }
 
-        // Use normalized date
         const searchDate = normalizeDate(date);
 
         const updatedRecord = await Attendance.findOneAndUpdate(
@@ -38,7 +36,6 @@ router.post('/mark', auth, async (req, res) => {
 });
 
 // @route   GET /api/attendance/by-date/:classId/:date
-// @desc    Get attendance for a specific date
 router.get('/by-date/:classId/:date', async (req, res) => {
     try {
         const { classId, date } = req.params;
@@ -47,7 +44,6 @@ router.get('/by-date/:classId/:date', async (req, res) => {
         const record = await Attendance.findOne({ classId, date: searchDate });
 
         if (!record) {
-            // Return empty structure instead of 404 for easier frontend handling
             return res.json({ periods: [] });
         }
 

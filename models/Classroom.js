@@ -1,7 +1,13 @@
 const mongoose = require('mongoose');
 
 const ClassroomSchema = new mongoose.Schema({
-    className: { type: String, required: true },
+    // FIX: Add unique: true and trim whitespace
+    className: { 
+        type: String, 
+        required: true, 
+        unique: true, 
+        trim: true 
+    },
     adminPin: { type: String, required: true },
     totalStudents: { type: Number, required: true },
 
