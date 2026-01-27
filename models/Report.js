@@ -35,21 +35,7 @@ const ReportSchema = new mongoose.Schema({
     adminResponse: {
         type: String,
         maxlength: 500
-    },
-    createdAt: {
-        type: Date,
-        default: Date.now
-    },
-    updatedAt: {
-        type: Date,
-        default: Date.now
     }
-});
-
-// Update the updatedAt timestamp on save
-ReportSchema.pre('save', function (next) {
-    this.updatedAt = Date.now();
-    next();
-});
+}, { timestamps: true });
 
 module.exports = mongoose.model('Report', ReportSchema);

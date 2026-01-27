@@ -18,6 +18,9 @@ router.get('/report/:classId/:rollNumber', async (req, res) => {
         if (!classroom) return res.status(404).json({ error: 'Class not found' });
 
         // 🚀 OPTIMIZATION: Use Aggregation instead of fetching all records
+        const latestAttendance = await Attendance.findOne({ classId }).sort({ updatedAt: -1 }).select('updatedAt');
+        const lastUpdated = latestAttendance ? latestAttendance.updatedAt : null;
+
         const stats = await Attendance.aggregate([
             {
                 $match: { classId: new mongoose.Types.ObjectId(classId) }
@@ -81,6 +84,7 @@ router.get('/report/:classId/:rollNumber', async (req, res) => {
         res.json({
             studentRoll: rollNo,
             className: classroom.className,
+            lastUpdated,
             subjects: finalReport
         });
 

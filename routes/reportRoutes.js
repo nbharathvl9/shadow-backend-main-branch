@@ -3,11 +3,14 @@ const router = express.Router();
 const Report = require('../models/Report');
 const Classroom = require('../models/Classroom');
 const auth = require('../middleware/auth');
+const mongoose = require('mongoose');
 
 // Submit a new report
 router.post('/submit', async (req, res) => {
     try {
         const { classId, studentRoll, date, subjectId, subjectName, issueDescription } = req.body;
+        console.log('📝 Report Submission Attempt:', req.body);
+
 
         // Validate required fields
         if (!classId || !studentRoll || !date || !subjectId || !subjectName || !issueDescription) {
@@ -43,6 +46,24 @@ router.post('/submit', async (req, res) => {
     }
 });
 
+// Get all reports for a class (admin use) - Protected
+router.get('/class/:classId', auth, async (req, res) => {
+    try {
+        const { classId } = req.params;
+
+        // Validate Class ID
+        if (!mongoose.Types.ObjectId.isValid(classId)) {
+            return res.status(400).json({ error: 'Invalid Class ID' });
+        }
+
+        const reports = await Report.find({ classId }).sort({ createdAt: -1 });
+        res.json({ reports });
+    } catch (err) {
+        console.error('Error fetching class reports:', err);
+        res.status(500).json({ error: 'Failed to fetch reports', details: err.message });
+    }
+});
+
 // Get all reports for a specific student
 router.get('/:classId/:rollNumber', async (req, res) => {
     try {
@@ -56,21 +77,6 @@ router.get('/:classId/:rollNumber', async (req, res) => {
         res.json({ reports });
     } catch (err) {
         console.error('Error fetching reports:', err);
-        res.status(500).json({ error: 'Failed to fetch reports' });
-    }
-});
-
-// Get all reports for a class (admin use) - Protected
-router.get('/class/:classId', auth, async (req, res) => {
-    try {
-        const { classId } = req.params;
-
-        const reports = await Report.find({ classId })
-            .sort({ createdAt: -1 });
-
-        res.json({ reports });
-    } catch (err) {
-        console.error('Error fetching class reports:', err);
         res.status(500).json({ error: 'Failed to fetch reports' });
     }
 });
