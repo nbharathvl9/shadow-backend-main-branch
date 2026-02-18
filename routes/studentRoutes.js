@@ -193,7 +193,7 @@ router.get('/day-attendance/:classId/:rollNumber/:date', async (req, res) => {
 
         const queryDate = normalizeDate(date);
 
-        console.log('🔍 Looking for:', { classId, queryDate: queryDate.toISOString(), rollNo });
+
 
         // Find the most recent attendance record for this date
         const attendanceRecord = await Attendance.findOne({
@@ -201,11 +201,10 @@ router.get('/day-attendance/:classId/:rollNumber/:date', async (req, res) => {
             date: queryDate
         }).sort({ updatedAt: -1 });
 
-        console.log('🔍 Student calendar lookup:', { classId, date, found: !!attendanceRecord, periods: attendanceRecord?.periods?.length || 0 });
+
 
         // Only return data if attendance was actually marked
         if (!attendanceRecord || !attendanceRecord.periods || attendanceRecord.periods.length === 0) {
-            console.log('❌ No attendance data to return');
             return res.json({ periods: [] });
         }
 
@@ -242,7 +241,7 @@ router.get('/history/:classId/:rollNumber/:subjectId', async (req, res) => {
 
         records.forEach(record => {
             // A subject might occur multiple times in one day (e.g. 2 periods)
-            const relevantPeriods = record.periods.filter(p => p.subjectId === subjectId);
+            const relevantPeriods = record.periods.filter(p => String(p.subjectId) === String(subjectId));
 
             relevantPeriods.forEach(p => {
                 history.push({

@@ -53,6 +53,9 @@ router.post('/create', async (req, res) => {
     }
 });
 
+// Helper: Escape special regex characters from user input
+const escapeRegex = (str) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
 // @route   POST /api/class/admin-login
 // @desc    Verify Admin PIN and Return Token
 router.post('/admin-login', async (req, res) => {
@@ -60,7 +63,7 @@ router.post('/admin-login', async (req, res) => {
         const { className, adminPin } = req.body;
 
         const classroom = await Classroom.findOne({
-            className: { $regex: new RegExp(`^${className}$`, 'i') }
+            className: { $regex: new RegExp(`^${escapeRegex(className)}$`, 'i') }
         });
 
         if (!classroom) {
@@ -238,11 +241,30 @@ router.put('/update-settings', auth, async (req, res) => {
     }
 });
 
-//Public Routes (No Auth Needed)
+// --- Public Routes (No Auth Needed) ---
+
+// @route   GET /api/class/stats/all
+// @desc    Get system statistics (total classes and students)
+// IMPORTANT: Must be defined BEFORE /:id to avoid route collision
+router.get('/stats/all', async (req, res) => {
+    try {
+        const totalClasses = await Classroom.countDocuments();
+        const classrooms = await Classroom.find({}, 'totalStudents');
+        const totalStudents = classrooms.reduce((sum, c) => sum + c.totalStudents, 0);
+
+        res.json({
+            totalClasses,
+            totalStudents
+        });
+    } catch (err) {
+        res.status(500).json({ error: 'Server Error' });
+    }
+});
+
 router.get('/lookup/:className', async (req, res) => {
     try {
         const classroom = await Classroom.findOne({
-            className: { $regex: new RegExp(`^${req.params.className}$`, 'i') }
+            className: { $regex: new RegExp(`^${escapeRegex(req.params.className)}$`, 'i') }
         });
 
         if (!classroom) {
@@ -255,30 +277,13 @@ router.get('/lookup/:className', async (req, res) => {
     }
 });
 
+// Catch-all by ID — must be LAST among GET routes
 router.get('/:id', async (req, res) => {
     try {
-        const classroom = await Classroom.findById(req.params.id);
+        const classroom = await Classroom.findById(req.params.id).select('-adminPin');
         if (!classroom) return res.status(404).json({ error: 'Class not found' });
         res.json(classroom);
     } catch (err) {
-        res.status(500).json({ error: 'Server Error' });
-    }
-});
-
-// @route   GET /api/class/stats/all
-// @desc    Get system statistics (total classes and students)
-router.get('/stats/all', async (req, res) => {
-    try {
-        const totalClasses = await Classroom.countDocuments();
-        const classrooms = await Classroom.find({}, 'totalStudents');
-        const totalStudents = classrooms.reduce((sum, c) => sum + c.totalStudents, 0);
-
-        res.json({
-            totalClasses,
-            totalStudents
-        });
-    } catch (err) {
-        console.error(err);
         res.status(500).json({ error: 'Server Error' });
     }
 });
