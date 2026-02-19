@@ -4,12 +4,21 @@ const Report = require('../models/Report');
 const Classroom = require('../models/Classroom');
 const auth = require('../middleware/auth');
 const mongoose = require('mongoose');
+const rateLimit = require('express-rate-limit');
+
+// Rate limit for report submissions — 5 per 15 minutes per IP
+const reportLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 5,
+    message: { error: 'Too many reports submitted. Please try again later.' },
+    standardHeaders: true,
+    legacyHeaders: false,
+});
 
 // Submit a new report
-router.post('/submit', async (req, res) => {
+router.post('/submit', reportLimiter, async (req, res) => {
     try {
         const { classId, studentRoll, date, subjectId, subjectName, issueDescription } = req.body;
-        console.log('📝 Report Submission Attempt:', req.body);
 
 
         // Validate required fields
@@ -92,6 +101,11 @@ router.patch('/:reportId', auth, async (req, res) => {
             return res.status(404).json({ error: 'Report not found' });
         }
 
+        // Verify the report belongs to the authenticated admin's class
+        if (report.classId.toString() !== req.user.classId) {
+            return res.status(403).json({ error: 'Unauthorized — report belongs to another class' });
+        }
+
         if (status) report.status = status;
         if (adminResponse) report.adminResponse = adminResponse;
 
@@ -102,7 +116,6 @@ router.patch('/:reportId', auth, async (req, res) => {
             report
         });
     } catch (err) {
-        console.error('Error updating report:', err);
         res.status(500).json({ error: 'Failed to update report' });
     }
 });
