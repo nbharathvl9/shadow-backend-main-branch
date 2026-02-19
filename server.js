@@ -55,13 +55,12 @@ const limiter = rateLimit({
 app.use('/api/', limiter);
 
 // ─── Response Caching Headers ───
-// Short-lived cache for GET requests (revalidate after 30s, serve stale for 60s)
+// ─── Response Caching Headers ───
+// Force no-cache for all API responses to ensure real-time updates
 app.use((req, res, next) => {
-    if (req.method === 'GET') {
-        res.set('Cache-Control', 'public, max-age=30, stale-while-revalidate=60');
-    } else {
-        res.set('Cache-Control', 'no-store');
-    }
+    res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+    res.set('Pragma', 'no-cache');
+    res.set('Expires', '0');
     next();
 });
 
