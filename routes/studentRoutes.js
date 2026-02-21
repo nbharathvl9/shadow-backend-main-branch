@@ -99,7 +99,7 @@ router.get('/day-attendance/:classId/:rollNumber/:date', async (req, res) => {
         const attendanceRecord = await Attendance.findOne({
             classId,
             date: queryDate
-        }).sort({ updatedAt: -1 }).lean();
+        }).sort({ updatedAt: -1 }).select('periods').lean();
 
 
 

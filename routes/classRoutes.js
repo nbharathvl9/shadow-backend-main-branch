@@ -21,7 +21,7 @@ router.post('/create', async (req, res) => {
         // Check for case-insensitive duplicate: "CSE B", "cse b", "Cse B" → same class
         const existing = await Classroom.findOne({
             className: { $regex: new RegExp(`^${escapeRegex(className.trim())}$`, 'i') }
-        });
+        }).select('_id').lean();
         if (existing) {
             return res.status(400).json({ error: 'Class Name already exists! Please choose another.' });
         }
