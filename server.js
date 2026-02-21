@@ -68,21 +68,13 @@ app.use((req, res, next) => {
 });
 
 // ─── DB Connection ───
-const connectDB = async () => {
-    try {
-        const conn = await mongoose.connect(process.env.MONGO_URI, {
-            maxPoolSize: 10, // Limit to 10 to stay within Free Tier limits
-            serverSelectionTimeoutMS: 5000,
-            socketTimeoutMS: 45000,
-        });
-        console.log('MongoDB Connected (Pool Limited to 10)');
-    } catch (error) {
-        console.error(`Error: ${error.message}`);
-        process.exit(1);
-    }
-};
-
-connectDB();
+mongoose.connect(process.env.MONGODB_URI, {
+    maxPoolSize: 10, // Limit to 10 to stay within Free Tier limits
+    serverSelectionTimeoutMS: 5000,
+    socketTimeoutMS: 45000,
+})
+    .then(() => console.log('MongoDB Connected (Pool Limited to 10)'))
+    .catch(err => console.log(err));
 
 // ─── Routes ───
 app.use('/api/class', classRoutes);
