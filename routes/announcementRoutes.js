@@ -6,6 +6,9 @@ const auth = require('../middleware/auth');
 // Get all announcements for a class (Public - students need access)
 router.get('/:classId', async (req, res) => {
     try {
+        // Announcements are time-sensitive; always bypass browser/proxy caches.
+        res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+
         const announcements = await Announcement.find({ classId: req.params.classId })
             .sort({ createdAt: -1 })
             .limit(100).lean();

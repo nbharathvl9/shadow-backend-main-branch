@@ -27,7 +27,7 @@ router.post('/submit', reportLimiter, async (req, res) => {
         }
 
         // Check if class exists
-        const classroom = await Classroom.findById(classId);
+        const classroom = await Classroom.findById(classId).select('_id').lean();
         if (!classroom) {
             return res.status(404).json({ error: 'Class not found' });
         }

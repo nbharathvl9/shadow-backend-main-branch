@@ -55,11 +55,10 @@ const limiter = rateLimit({
 app.use('/api/', limiter);
 
 // ─── Response Caching Headers ───
-// ─── Response Caching Headers ───
-// Force no-cache for all API responses to ensure real-time updates
+// Keep caching only for safe aggregate stats; serve live data everywhere else.
 app.use((req, res, next) => {
-    if (req.method === 'GET') {
-        // Allow short-term caching (e.g., 1 minute) for student reports
+    const isStatsRoute = req.method === 'GET' && req.path === '/api/class/stats/all';
+    if (isStatsRoute) {
         res.set('Cache-Control', 'public, max-age=60');
     } else {
         res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
@@ -68,7 +67,13 @@ app.use((req, res, next) => {
 });
 
 // ─── DB Connection ───
-mongoose.connect(process.env.MONGODB_URI, {
+const mongoUri = process.env.MONGODB_URI || process.env.MONGO_URI;
+if (!mongoUri) {
+    console.error('MongoDB URI is missing. Set MONGODB_URI or MONGO_URI.');
+    process.exit(1);
+}
+
+mongoose.connect(mongoUri, {
     maxPoolSize: 10, // Limit to 10 to stay within Free Tier limits
     serverSelectionTimeoutMS: 5000,
     socketTimeoutMS: 45000,

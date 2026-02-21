@@ -30,7 +30,7 @@ router.post('/create', async (req, res) => {
         const hashedPin = await bcrypt.hash(adminPin, salt);
 
         const newClass = new Classroom({
-            className,
+            className: _className,
             adminPin: hashedPin, // Store the hash, not the plain text
             totalStudents,
             subjects
@@ -67,8 +67,10 @@ router.post('/create', async (req, res) => {
 router.post('/admin-login', async (req, res) => {
     try {
         const { className, adminPin } = req.body;
+        const _className = (className || '').trim();
 
-        const classroom = await Classroom.findOne({ className })
+        const classroom = await Classroom.findOne({ className: _className })
+            .collation({ locale: 'en', strength: 2 })
             .select('className adminPin')
             .lean();
 

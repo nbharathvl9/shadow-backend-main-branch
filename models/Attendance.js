@@ -15,5 +15,7 @@ const AttendanceSchema = new mongoose.Schema({
 }, { timestamps: true }); // Add timestamps for createdAt and updatedAt
 
 AttendanceSchema.index({ classId: 1, date: 1 }, { unique: true });
+AttendanceSchema.index({ classId: 1, updatedAt: -1 });
+AttendanceSchema.index({ classId: 1, 'periods.subjectId': 1, date: -1 });
 
 module.exports = mongoose.model('Attendance', AttendanceSchema);
