@@ -71,7 +71,7 @@ router.post('/admin-login', async (req, res) => {
 
         const classroom = await Classroom.findOne({
             className: { $regex: new RegExp(`^${escapeRegex(className)}$`, 'i') }
-        });
+        }).select('_id adminPin').lean();
 
         if (!classroom) {
             return res.status(404).json({ error: 'Class not found' });
@@ -106,7 +106,7 @@ router.post('/admin-login', async (req, res) => {
 router.post('/verify-token', auth, async (req, res) => {
     try {
         // Token is already verified by auth middleware, req.user has { classId }
-        const classroom = await Classroom.findById(req.user.classId).select('className');
+        const classroom = await Classroom.findById(req.user.classId).select('className').lean();
         if (!classroom) {
             return res.status(404).json({ error: 'Class not found' });
         }
@@ -232,7 +232,7 @@ router.delete('/:id/delete-subject/:subjectId', auth, async (req, res) => {
 router.get('/stats/all', async (req, res) => {
     try {
         const totalClasses = await Classroom.countDocuments();
-        const classrooms = await Classroom.find({}, 'totalStudents');
+        const classrooms = await Classroom.find({}, 'totalStudents').lean();
         const totalStudents = classrooms.reduce((sum, c) => sum + c.totalStudents, 0);
 
         res.json({
@@ -248,7 +248,7 @@ router.get('/lookup/:className', async (req, res) => {
     try {
         const classroom = await Classroom.findOne({
             className: { $regex: new RegExp(`^${escapeRegex(req.params.className)}$`, 'i') }
-        });
+        }).select('_id className').lean();
 
         if (!classroom) {
             return res.status(404).json({ error: 'Class not found' });
@@ -263,7 +263,7 @@ router.get('/lookup/:className', async (req, res) => {
 // Catch-all by ID — must be LAST among GET routes
 router.get('/:id', async (req, res) => {
     try {
-        const classroom = await Classroom.findById(req.params.id).select('-adminPin');
+        const classroom = await Classroom.findById(req.params.id).select('-adminPin').lean();
         if (!classroom) return res.status(404).json({ error: 'Class not found' });
         res.json(classroom);
     } catch (err) {

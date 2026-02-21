@@ -14,11 +14,11 @@ router.get('/report/:classId/:rollNumber', async (req, res) => {
             return res.status(400).json({ error: 'Invalid Class ID' });
         }
 
-        const classroom = await Classroom.findById(classId);
+        const classroom = await Classroom.findById(classId).select('className subjects').lean();
         if (!classroom) return res.status(404).json({ error: 'Class not found' });
 
         // 🚀 OPTIMIZATION: Use Aggregation instead of fetching all records
-        const latestAttendance = await Attendance.findOne({ classId }).sort({ updatedAt: -1 }).select('updatedAt');
+        const latestAttendance = await Attendance.findOne({ classId }).sort({ updatedAt: -1 }).select('updatedAt').lean();
         const lastUpdated = latestAttendance ? latestAttendance.updatedAt : null;
 
         const stats = await Attendance.aggregate([
@@ -99,7 +99,7 @@ router.get('/day-attendance/:classId/:rollNumber/:date', async (req, res) => {
         const attendanceRecord = await Attendance.findOne({
             classId,
             date: queryDate
-        }).sort({ updatedAt: -1 });
+        }).sort({ updatedAt: -1 }).lean();
 
 
 
@@ -135,7 +135,7 @@ router.get('/history/:classId/:rollNumber/:subjectId', async (req, res) => {
         const records = await Attendance.find({
             classId: classId,
             'periods.subjectId': subjectId
-        }).select('date periods').sort({ date: -1 });
+        }).select('date periods').sort({ date: -1 }).lean();
 
         const history = [];
 

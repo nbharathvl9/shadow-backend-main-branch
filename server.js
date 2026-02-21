@@ -71,10 +71,13 @@ app.use((req, res, next) => {
 const connectDB = async () => {
     try {
         const conn = await mongoose.connect(process.env.MONGO_URI, {
-            // Performance: reuse connections, set timeouts
+            // Performance: reuse connections, set timeouts avoiding Atlas IP bans
             maxPoolSize: 10,
+            minPoolSize: 1,
             serverSelectionTimeoutMS: 5000,
             socketTimeoutMS: 45000,
+            connectTimeoutMS: 10000,
+            family: 4 // Force IPv4 to prevent lookup delays
         });
         console.log(`MongoDB Connected: ${conn.connection.host}`);
     } catch (error) {
@@ -110,7 +113,7 @@ app.use((err, req, res, next) => {
     });
 });
 
-const PORT = process.env.PORT || 5001; 
+const PORT = process.env.PORT || 5001;
 app.listen(PORT, '0.0.0.0', () => { // Binding to 0.0.0.0 is best for cloud deploys
     console.log(`Server running on port ${PORT}`);
 });
