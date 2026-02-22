@@ -63,11 +63,18 @@ router.post('/mark', auth, async (req, res) => {
         const searchDate = normalizeDate(date);
         const normalizedPeriods = normalizePeriodsForStorage(periods);
 
-        const updatedRecord = await Attendance.findOneAndUpdate(
-            { classId: classId, date: searchDate },
-            { $set: { periods: normalizedPeriods } },
-            { new: true, upsert: true }
-        );
+        let updatedRecord;
+        if (normalizedPeriods.length === 0) {
+            // Delete the entire attendance document if there are no periods
+            await Attendance.findOneAndDelete({ classId: classId, date: searchDate });
+            updatedRecord = null;
+        } else {
+            updatedRecord = await Attendance.findOneAndUpdate(
+                { classId: classId, date: searchDate },
+                { $set: { periods: normalizedPeriods } },
+                { new: true, upsert: true }
+            );
+        }
 
         res.json({ message: 'Attendance Saved Successfully!', data: updatedRecord });
 
@@ -102,7 +109,11 @@ router.get('/by-date/:classId/:date', async (req, res) => {
 router.get('/dates/:classId', async (req, res) => {
     try {
         const { classId } = req.params;
-        const records = await Attendance.find({ classId }).select('date -_id').sort({ date: -1 }).lean();
+        // Only return dates that actually have periods stored
+        const records = await Attendance.find({
+            classId,
+            periods: { $exists: true, $not: { $size: 0 } }
+        }).select('date -_id').sort({ date: -1 }).lean();
 
         const dates = records.map(r => r.date);
         res.json({ dates });

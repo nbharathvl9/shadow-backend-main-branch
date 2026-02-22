@@ -49,7 +49,7 @@ app.use(express.urlencoded({ limit: '50mb', extended: true }));
 // ─── Rate Limiting ───
 const limiter = rateLimit({
     windowMs: 15 * 60 * 1000, // 15 minutes
-    max: 300, // Increased for admin usage patterns (many API calls per page)
+    max: 2000, // Drastically increased for heavy local testing to prevent blocks
     message: { error: 'Too many requests from this IP, please try again later.' },
     standardHeaders: true,
     legacyHeaders: false,
