@@ -49,7 +49,7 @@ app.use(express.urlencoded({ limit: '50mb', extended: true }));
 // ─── Rate Limiting ───
 const limiter = rateLimit({
     windowMs: 15 * 60 * 1000, // 15 minutes
-    max: 300, // Increased for admin usage patterns (many API calls per page)
+    max: 2000, // Drastically increased for heavy local testing to prevent blocks
     message: { error: 'Too many requests from this IP, please try again later.' },
     standardHeaders: true,
     legacyHeaders: false,
@@ -78,11 +78,11 @@ if (!mongoUri) {
 }
 
 mongoose.connect(mongoUri, {
-    maxPoolSize: 10, // Limit to 10 to stay within Free Tier limits
+    maxPoolSize: 50, // Increased to 50 for even higher concurrency 
     serverSelectionTimeoutMS: 5000,
     socketTimeoutMS: 45000,
 })
-    .then(() => console.log('MongoDB Connected (Pool Limited to 10)'))
+    .then(() => console.log('MongoDB Connected (Pool Limited to 50)'))
     .catch(err => console.log(err));
 
 // ─── Routes ───
