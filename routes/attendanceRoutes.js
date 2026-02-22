@@ -10,6 +10,34 @@ const normalizeDate = (dateString) => {
     return new Date(`${datePart}T00:00:00.000Z`);
 };
 
+const sanitizeRollNumber = (value) => {
+    if (value === undefined || value === null) return null;
+    const cleaned = String(value).trim();
+    return cleaned || null;
+};
+
+const normalizePeriodsForStorage = (periods) => {
+    if (!Array.isArray(periods)) return [];
+
+    return periods.map((period) => {
+        const seen = new Set();
+        const absentRollNumbers = Array.isArray(period.absentRollNumbers)
+            ? period.absentRollNumbers
+                .map((roll) => sanitizeRollNumber(roll))
+                .filter((roll) => {
+                    if (!roll || seen.has(roll)) return false;
+                    seen.add(roll);
+                    return true;
+                })
+            : [];
+
+        return {
+            ...period,
+            absentRollNumbers
+        };
+    });
+};
+
 // @route   POST /api/attendance/mark
 router.post('/mark', auth, async (req, res) => {
     try {
@@ -20,10 +48,11 @@ router.post('/mark', auth, async (req, res) => {
         }
 
         const searchDate = normalizeDate(date);
+        const normalizedPeriods = normalizePeriodsForStorage(periods);
 
         const updatedRecord = await Attendance.findOneAndUpdate(
             { classId: classId, date: searchDate },
-            { $set: { periods: periods } },
+            { $set: { periods: normalizedPeriods } },
             { new: true, upsert: true }
         );
 

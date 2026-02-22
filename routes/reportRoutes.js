@@ -15,27 +15,63 @@ const reportLimiter = rateLimit({
     legacyHeaders: false,
 });
 
+const sanitizeRollNumber = (value) => {
+    if (value === undefined || value === null) return null;
+    const cleaned = String(value).trim();
+    return cleaned || null;
+};
+
+const getClassRollNumbers = (classroom) => {
+    if (Array.isArray(classroom?.rollNumbers) && classroom.rollNumbers.length > 0) {
+        return classroom.rollNumbers
+            .map((roll) => sanitizeRollNumber(roll))
+            .filter(Boolean);
+    }
+
+    const totalStudents = Number(classroom?.totalStudents);
+    if (Number.isInteger(totalStudents) && totalStudents > 0) {
+        return Array.from({ length: totalStudents }, (_, index) => String(index + 1));
+    }
+
+    return [];
+};
+
+const isSameRollNumber = (left, right) => {
+    const a = sanitizeRollNumber(left);
+    const b = sanitizeRollNumber(right);
+    if (!a || !b) return false;
+    if (a === b) return true;
+    if (/^\d+$/.test(a) && /^\d+$/.test(b)) return Number(a) === Number(b);
+    return false;
+};
+
 // Submit a new report
 router.post('/submit', reportLimiter, async (req, res) => {
     try {
         const { classId, studentRoll, date, subjectId, subjectName, issueDescription } = req.body;
+        const normalizedStudentRoll = sanitizeRollNumber(studentRoll);
 
 
         // Validate required fields
-        if (!classId || !studentRoll || !date || !subjectId || !subjectName || !issueDescription) {
+        if (!classId || !normalizedStudentRoll || !date || !subjectId || !subjectName || !issueDescription) {
             return res.status(400).json({ error: 'All fields are required' });
         }
 
         // Check if class exists
-        const classroom = await Classroom.findById(classId).select('_id').lean();
+        const classroom = await Classroom.findById(classId).select('_id rollNumbers totalStudents').lean();
         if (!classroom) {
             return res.status(404).json({ error: 'Class not found' });
+        }
+
+        const classRollNumbers = getClassRollNumbers(classroom);
+        if (!classRollNumbers.includes(normalizedStudentRoll)) {
+            return res.status(404).json({ error: 'Student not found in this class' });
         }
 
         // Create new report
         const report = new Report({
             classId,
-            studentRoll,
+            studentRoll: normalizedStudentRoll,
             date,
             subjectId,
             subjectName,
@@ -77,10 +113,19 @@ router.get('/class/:classId', auth, async (req, res) => {
 router.get('/:classId/:rollNumber', async (req, res) => {
     try {
         const { classId, rollNumber } = req.params;
+        const normalizedRollNumber = sanitizeRollNumber(rollNumber);
+
+        if (!normalizedRollNumber) {
+            return res.status(400).json({ error: 'Invalid Roll Number' });
+        }
+
+        const rollQuery = /^\d+$/.test(normalizedRollNumber)
+            ? { $in: [normalizedRollNumber, Number(normalizedRollNumber)] }
+            : normalizedRollNumber;
 
         const reports = await Report.find({
             classId,
-            studentRoll: parseInt(rollNumber)
+            studentRoll: rollQuery
         }).sort({ createdAt: -1 }).lean(); // Most recent first
 
         res.json({ reports });
@@ -125,6 +170,11 @@ router.delete('/delete/:reportId', async (req, res) => {
     try {
         const { reportId } = req.params;
         const { studentRoll } = req.query; // Send from frontend
+        const normalizedStudentRoll = sanitizeRollNumber(studentRoll);
+
+        if (!normalizedStudentRoll) {
+            return res.status(400).json({ error: 'Invalid student roll number' });
+        }
 
         const report = await Report.findById(reportId);
 
@@ -133,7 +183,7 @@ router.delete('/delete/:reportId', async (req, res) => {
         }
 
         // Make sure only the student who created it can delete it
-        if (report.studentRoll !== parseInt(studentRoll)) {
+        if (!isSameRollNumber(report.studentRoll, normalizedStudentRoll)) {
             return res.status(403).json({ error: 'Unauthorized to delete this report' });
         }
 
@@ -156,6 +206,11 @@ router.patch('/edit/:reportId', reportLimiter, async (req, res) => {
     try {
         const { reportId } = req.params;
         const { studentRoll, date, subjectId, subjectName, issueDescription } = req.body;
+        const normalizedStudentRoll = sanitizeRollNumber(studentRoll);
+
+        if (!normalizedStudentRoll) {
+            return res.status(400).json({ error: 'Invalid student roll number' });
+        }
 
         const report = await Report.findById(reportId);
 
@@ -164,7 +219,7 @@ router.patch('/edit/:reportId', reportLimiter, async (req, res) => {
         }
 
         // Verify ownership
-        if (report.studentRoll !== parseInt(studentRoll)) {
+        if (!isSameRollNumber(report.studentRoll, normalizedStudentRoll)) {
             return res.status(403).json({ error: 'Unauthorized to edit this report' });
         }
 

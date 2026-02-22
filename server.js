@@ -59,7 +59,9 @@ app.use('/api/', limiter);
 // ─── Response Caching Headers ───
 // Keep caching only for safe aggregate stats; serve live data everywhere else.
 app.use((req, res, next) => {
-    const isStatsRoute = req.method === 'GET' && req.path === '/api/class/stats/all';
+    const isStatsRoute = req.method === 'GET' && (
+        req.path === '/api/class/stats/all' || req.path === '/api/classes/stats/all'
+    );
     if (isStatsRoute) {
         res.set('Cache-Control', 'public, max-age=60');
     } else {
@@ -85,6 +87,7 @@ mongoose.connect(mongoUri, {
 
 // ─── Routes ───
 app.use('/api/class', classRoutes);
+app.use('/api/classes', classRoutes);
 app.use('/api/attendance', attendanceRoutes);
 app.use('/api/student', studentRoutes);
 app.use('/api/reports', reportRoutes);

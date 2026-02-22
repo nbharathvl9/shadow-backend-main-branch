@@ -7,7 +7,7 @@ const ReportSchema = new mongoose.Schema({
         required: true
     },
     studentRoll: {
-        type: Number,
+        type: String,
         required: true
     },
     date: {

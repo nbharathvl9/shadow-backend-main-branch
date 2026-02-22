@@ -5,16 +5,36 @@ const bcrypt = require('bcryptjs'); // Import bcrypt for security
 const Classroom = require('../models/Classroom');
 const auth = require('../middleware/auth');
 
-// Helper: Escape special regex characters from user input
-const escapeRegex = (str) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const sanitizeRollNumber = (value) => {
+    if (value === undefined || value === null) return null;
+    const cleaned = String(value).trim();
+    return cleaned || null;
+};
+
+const sanitizeRollNumbers = (values) => {
+    if (!Array.isArray(values)) return [];
+    const seen = new Set();
+    const normalized = [];
+
+    values.forEach((value) => {
+        const cleaned = sanitizeRollNumber(value);
+        if (cleaned && !seen.has(cleaned)) {
+            seen.add(cleaned);
+            normalized.push(cleaned);
+        }
+    });
+
+    return normalized;
+};
 
 // @route   POST /api/class/create
 // @desc    Create a new Classroom (Protected)
 router.post('/create', async (req, res) => {
     try {
-        const { className, adminPin, totalStudents, subjects } = req.body;
+        const { className, adminPin, rollNumbers, subjects } = req.body;
+        const normalizedRollNumbers = sanitizeRollNumbers(rollNumbers);
 
-        if (!className || !adminPin || !totalStudents) {
+        if (!className || !adminPin || normalizedRollNumbers.length === 0) {
             return res.status(400).json({ error: 'Please provide all required fields' });
         }
 
@@ -32,7 +52,7 @@ router.post('/create', async (req, res) => {
         const newClass = new Classroom({
             className: _className,
             adminPin: hashedPin, // Store the hash, not the plain text
-            totalStudents,
+            rollNumbers: normalizedRollNumbers,
             subjects
         });
 
@@ -57,6 +77,46 @@ router.post('/create', async (req, res) => {
         if (err.code === 11000) {
             return res.status(400).json({ error: 'Class Name already exists! Please choose another.' });
         }
+        console.error(err);
+        res.status(500).json({ error: 'Server Error' });
+    }
+});
+
+// @route   PATCH /api/class/:classId/students
+// @desc    Add one roll number to the class without duplicates (Protected)
+router.patch('/:classId/students', auth, async (req, res) => {
+    try {
+        const { classId } = req.params;
+        const rollNumber = sanitizeRollNumber(req.body.rollNumber);
+
+        if (req.user.classId !== classId) {
+            return res.status(403).json({ error: 'Unauthorized action' });
+        }
+
+        if (!rollNumber) {
+            return res.status(400).json({ error: 'rollNumber is required' });
+        }
+
+        const updateResult = await Classroom.updateOne(
+            { _id: classId },
+            { $addToSet: { rollNumbers: rollNumber } }
+        );
+
+        if (updateResult.matchedCount === 0) {
+            return res.status(404).json({ error: 'Class not found' });
+        }
+
+        if (updateResult.modifiedCount === 0) {
+            return res.status(409).json({ error: 'Roll number already exists in this class' });
+        }
+
+        const classroom = await Classroom.findById(classId).select('_id className rollNumbers').lean();
+        res.json({
+            message: 'Student added successfully',
+            rollNumber,
+            rollNumbers: classroom.rollNumbers
+        });
+    } catch (err) {
         console.error(err);
         res.status(500).json({ error: 'Server Error' });
     }
@@ -233,8 +293,12 @@ router.delete('/:id/delete-subject/:subjectId', auth, async (req, res) => {
 router.get('/stats/all', async (req, res) => {
     try {
         const totalClasses = await Classroom.countDocuments();
-        const classrooms = await Classroom.find({}, 'totalStudents').lean();
-        const totalStudents = classrooms.reduce((sum, c) => sum + c.totalStudents, 0);
+        const classrooms = await Classroom.find({}, 'rollNumbers totalStudents').lean();
+        const totalStudents = classrooms.reduce((sum, c) => {
+            if (Array.isArray(c.rollNumbers)) return sum + c.rollNumbers.length;
+            if (Number.isFinite(c.totalStudents)) return sum + c.totalStudents;
+            return sum;
+        }, 0);
 
         res.json({
             totalClasses,

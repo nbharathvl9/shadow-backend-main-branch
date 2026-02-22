@@ -8,7 +8,14 @@ const ClassroomSchema = new mongoose.Schema({
         trim: true
     },
     adminPin: { type: String, required: true },
-    totalStudents: { type: Number, required: true },
+    rollNumbers: {
+        type: [String],
+        required: true,
+        validate: {
+            validator: (value) => Array.isArray(value) && value.length > 0,
+            message: 'At least one roll number is required'
+        }
+    },
 
     subjects: [{
         name: { type: String, required: true },

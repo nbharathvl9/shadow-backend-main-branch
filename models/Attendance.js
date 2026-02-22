@@ -10,7 +10,7 @@ const AttendanceSchema = new mongoose.Schema({
         subjectName: String,
 
 
-        absentRollNumbers: [{ type: Number }]
+        absentRollNumbers: [{ type: String }]
     }]
 }, { timestamps: true }); // Add timestamps for createdAt and updatedAt
 

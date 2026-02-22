@@ -4,17 +4,38 @@ const mongoose = require('mongoose'); // Required for ObjectId casting
 const Classroom = require('../models/Classroom');
 const Attendance = require('../models/Attendance');
 
-const parseRollNumber = (value) => {
-    const rollNo = Number(value);
-    if (!Number.isInteger(rollNo) || rollNo < 1) return null;
-    return rollNo;
+const sanitizeRollNumber = (value) => {
+    if (value === undefined || value === null) return null;
+    const cleaned = String(value).trim();
+    return cleaned || null;
+};
+
+const getClassRollNumbers = (classroom) => {
+    if (Array.isArray(classroom?.rollNumbers) && classroom.rollNumbers.length > 0) {
+        return classroom.rollNumbers
+            .map((roll) => sanitizeRollNumber(roll))
+            .filter(Boolean);
+    }
+
+    // Legacy fallback for old class documents that only have totalStudents.
+    const totalStudents = Number(classroom?.totalStudents);
+    if (Number.isInteger(totalStudents) && totalStudents > 0) {
+        return Array.from({ length: totalStudents }, (_, index) => String(index + 1));
+    }
+
+    return [];
+};
+
+const isRollAbsent = (absentRollNumbers, rollNumber) => {
+    if (!Array.isArray(absentRollNumbers)) return false;
+    return absentRollNumbers.some((roll) => sanitizeRollNumber(roll) === rollNumber);
 };
 
 // Get overall attendance report
 router.get('/report/:classId/:rollNumber', async (req, res) => {
     try {
         const { classId, rollNumber } = req.params;
-        const rollNo = parseRollNumber(rollNumber);
+        const rollNo = sanitizeRollNumber(rollNumber);
 
         if (!mongoose.Types.ObjectId.isValid(classId)) {
             return res.status(400).json({ error: 'Invalid Class ID' });
@@ -24,13 +45,22 @@ router.get('/report/:classId/:rollNumber', async (req, res) => {
             return res.status(400).json({ error: 'Invalid Roll Number' });
         }
 
-        const classroom = await Classroom.findById(classId).select('className subjects totalStudents').lean();
+        const classroom = await Classroom.findById(classId).select('className subjects rollNumbers totalStudents').lean();
         if (!classroom) return res.status(404).json({ error: 'Class not found' });
-        if (rollNo > classroom.totalStudents) return res.status(404).json({ error: 'Student not found' });
+
+        const classRollNumbers = getClassRollNumbers(classroom);
+        if (!classRollNumbers.includes(rollNo)) {
+            return res.status(404).json({ error: 'Student not found' });
+        }
 
         // 🚀 OPTIMIZATION: Use Aggregation instead of fetching all records
         const latestAttendance = await Attendance.findOne({ classId }).sort({ updatedAt: -1 }).select('updatedAt').lean();
         const lastUpdated = latestAttendance ? latestAttendance.updatedAt : null;
+
+        const absentChecks = [{ $in: [rollNo, "$periods.absentRollNumbers"] }];
+        if (/^\d+$/.test(rollNo)) {
+            absentChecks.push({ $in: [Number(rollNo), "$periods.absentRollNumbers"] });
+        }
 
         const stats = await Attendance.aggregate([
             {
@@ -46,7 +76,7 @@ router.get('/report/:classId/:rollNumber', async (req, res) => {
                     attendedClasses: {
                         $sum: {
                             // If rollNo is in absent list, add 0, else add 1
-                            $cond: [{ $in: [rollNo, "$periods.absentRollNumbers"] }, 0, 1]
+                            $cond: [{ $or: absentChecks }, 0, 1]
                         }
                     }
                 }
@@ -94,7 +124,7 @@ router.get('/report/:classId/:rollNumber', async (req, res) => {
 router.get('/day-attendance/:classId/:rollNumber/:date', async (req, res) => {
     try {
         const { classId, rollNumber, date } = req.params;
-        const rollNo = parseRollNumber(rollNumber);
+        const rollNo = sanitizeRollNumber(rollNumber);
 
         if (!mongoose.Types.ObjectId.isValid(classId)) {
             return res.status(400).json({ error: 'Invalid Class ID' });
@@ -104,9 +134,13 @@ router.get('/day-attendance/:classId/:rollNumber/:date', async (req, res) => {
             return res.status(400).json({ error: 'Invalid Roll Number' });
         }
 
-        const classroom = await Classroom.findById(classId).select('totalStudents').lean();
+        const classroom = await Classroom.findById(classId).select('rollNumbers totalStudents').lean();
         if (!classroom) return res.status(404).json({ error: 'Class not found' });
-        if (rollNo > classroom.totalStudents) return res.status(404).json({ error: 'Student not found' });
+
+        const classRollNumbers = getClassRollNumbers(classroom);
+        if (!classRollNumbers.includes(rollNo)) {
+            return res.status(404).json({ error: 'Student not found' });
+        }
 
         // Normalize date to match how it's stored (same as attendance save)
         const normalizeDate = (dateString) => {
@@ -129,7 +163,7 @@ router.get('/day-attendance/:classId/:rollNumber/:date', async (req, res) => {
         }
 
         const periodsWithStatus = attendanceRecord.periods.map(period => {
-            const isAbsent = period.absentRollNumbers.includes(rollNo);
+            const isAbsent = isRollAbsent(period.absentRollNumbers, rollNo);
             return {
                 periodNum: period.periodNum,
                 subjectName: period.subjectName,
@@ -148,7 +182,7 @@ router.get('/day-attendance/:classId/:rollNumber/:date', async (req, res) => {
 router.get('/history/:classId/:rollNumber/:subjectId', async (req, res) => {
     try {
         const { classId, rollNumber, subjectId } = req.params;
-        const rollNo = parseRollNumber(rollNumber);
+        const rollNo = sanitizeRollNumber(rollNumber);
 
         if (!mongoose.Types.ObjectId.isValid(classId)) {
             return res.status(400).json({ error: 'Invalid Class ID' });
@@ -158,9 +192,13 @@ router.get('/history/:classId/:rollNumber/:subjectId', async (req, res) => {
             return res.status(400).json({ error: 'Invalid Roll Number' });
         }
 
-        const classroom = await Classroom.findById(classId).select('totalStudents').lean();
+        const classroom = await Classroom.findById(classId).select('rollNumbers totalStudents').lean();
         if (!classroom) return res.status(404).json({ error: 'Class not found' });
-        if (rollNo > classroom.totalStudents) return res.status(404).json({ error: 'Student not found' });
+
+        const classRollNumbers = getClassRollNumbers(classroom);
+        if (!classRollNumbers.includes(rollNo)) {
+            return res.status(404).json({ error: 'Student not found' });
+        }
 
         // Find all attendance records containing this subject
         // Sort by date descending (newest first)
@@ -178,7 +216,7 @@ router.get('/history/:classId/:rollNumber/:subjectId', async (req, res) => {
             relevantPeriods.forEach(p => {
                 history.push({
                     date: record.date, // Frontend will format this
-                    status: p.absentRollNumbers.includes(rollNo) ? 'Absent' : 'Present',
+                    status: isRollAbsent(p.absentRollNumbers, rollNo) ? 'Absent' : 'Present',
                     periodNum: p.periodNum
                 });
             });
